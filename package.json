@@ -11,10 +11,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@wagmi/connectors": "^4.3.10",
-    "@wagmi/core": "^2.9.8",
+    "@wagmi/connectors": "4.3.10",
+    "@wagmi/core": "2.9.8",
     "viem": "^2.9.32",
-    "wagmi": "^2.9.8"
+    "wagmi": "2.9.8"
   },
   "devDependencies": {
     "buffer": "^6.0.3",
