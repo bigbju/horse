@@ -9,14 +9,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      external: ['@safe-global/safe-apps-sdk']
-    }
+      external: ['@safe-global/safe-apps-sdk'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@safe-globalThis/safe-apps-sdk': '@safe-global/safe-apps-sdk'
+    },
   },
   define: {
     global: 'globalThis',
   },
   optimizeDeps: {
     include: ['@wagmi/core', 'wagmi', 'viem'],
-    exclude: ['@noble/hashes']
-  }
+    exclude: ['@noble/hashes'],
+  },
 });
