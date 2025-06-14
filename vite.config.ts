@@ -9,13 +9,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      external: ['@safe-global/safe-apps-sdk'],
+      external: [
+        '@safe-global/safe-apps-sdk',
+        '@safe-global/safe-apps-provider'  // додав сюди
+      ],
     },
   },
   resolve: {
     alias: {
-      '@safe-globalThis/safe-apps-sdk': '@safe-global/safe-apps-sdk'
-    },
+      '@safe-globalThis/safe-apps-sdk': '@safe-global/safe-apps-sdk',
+      '@safe-globalThis/safe-apps-provider': '@safe-global/safe-apps-provider'
+    }
   },
   define: {
     global: 'globalThis',
