@@ -8,6 +8,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      external: ['@safe-global/safe-apps-sdk']
+    }
   },
   define: {
     global: 'globalThis',
