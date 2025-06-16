@@ -1,32 +1,53 @@
-import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "./contractABI.js";
+import { config, monadTestnet } from "./wagmi-config.js";
+import { connect, disconnect, getAccount, switchChain, writeContract, readContract } from '@wagmi/core';
 
 async function submitScoreToBlockchain(score) {
-  if (typeof window.ethereum === "undefined") {
-    console.warn("🦊 MetaMask не встановлений");
+  const account = getAccount(config);
+  if (!account.isConnected) {
+    console.warn("🦊 Wallet not connected");
     return;
   }
 
   try {
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-    const tx = await contract.submitScore(score);
-    console.log("⏳ Транзакція створена:", tx.hash);
-    await tx.wait();
-    console.log("✅ Транзакція завершена:", tx.hash);
+    console.log("📤 Submitting score to blockchain:", score);
+    console.log("🔗 Contract address:", CONTRACT_ADDRESS);
+    console.log("🌐 Current chain:", account.chainId);
+    
+    const hash = await writeContract(config, {
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: 'submitScore',
+      args: [score],
+    });
+    console.log("⏳ Transaction hash:", hash);
+    console.log("✅ Score submitted successfully!");
   } catch (error) {
-    console.error("❌ Помилка при відправці score в блокчейн:", error);
+    console.error("❌ Error submitting score to blockchain:", error);
+    console.error("Error details:", error.message);
   }
 }
 
 async function fetchLeaderboardFromBlockchain(ctx, score) {
+  const account = getAccount(config);
+  if (!account.isConnected) {
+    console.warn("🦊 Wallet not connected for leaderboard");
+    return;
+  }
+
   try {
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const userAddress = (await signer.getAddress()).toLowerCase();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-    const leaderboard = await contract.getTopPlayers();
+    console.log("📊 Fetching leaderboard from blockchain...");
+    console.log("🔗 Contract address:", CONTRACT_ADDRESS);
+    console.log("🌐 Current chain:", account.chainId);
+    
+    const userAddress = account.address.toLowerCase();
+    const leaderboard = await readContract(config, {
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: 'getTopPlayers',
+    });
+    
+    console.log("📋 Leaderboard data:", leaderboard);
 
     // Формуємо масив з гравцями і оцінками
     const sorted = leaderboard
@@ -93,23 +114,73 @@ window.addEventListener("DOMContentLoaded", () => {
   const ctx = canvas.getContext("2d");
 
   const connectWalletBtn = document.getElementById("connectWalletBtn");
+  const startGameBtn = document.getElementById("startGameBtn");
+  
   connectWalletBtn.addEventListener("click", async () => {
-    if (typeof window.ethereum === "undefined") {
-      alert("MetaMask не встановлено. Встанови його з https://metamask.io/");
-      return;
-    }
-
     try {
-
-          await switchToMonadNetwork(); // 🆕 Спочатку перемикаємо мережу
-          
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      const walletAddress = accounts[0];
-      connectWalletBtn.innerText = `✅ ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-      connectWalletBtn.disabled = true;
+      console.log("🔌 Connecting wallet...");
+      
+      // Connect using wagmi
+      const result = await connect(config, { 
+        connector: config.connectors[0] // Use injected connector (MetaMask)
+      });
+      
+      console.log("✅ Wallet connected:", result);
+      console.log("🌐 Connected chain ID:", result.chainId);
+      console.log("🎯 Target chain ID:", monadTestnet.id);
+      
+      // Switch to Monad network if needed
+      if (result.chainId !== monadTestnet.id) {
+        console.log("🔄 Switching to Monad Testnet...");
+        try {
+          await switchChain(config, { chainId: monadTestnet.id });
+          console.log("✅ Switched to Monad Testnet");
+        } catch (switchError) {
+          console.log("⚠️ Network not found, adding Monad Testnet...");
+          // Add Monad Testnet to MetaMask
+          try {
+                         await window.ethereum.request({
+               method: 'wallet_addEthereumChain',
+               params: [{
+                 chainId: '0x279f', // 10143 in hex
+                 chainName: 'Monad Testnet',
+                 nativeCurrency: {
+                   name: 'MON',
+                   symbol: 'MON',
+                   decimals: 18,
+                 },
+                 rpcUrls: ['https://testnet-rpc.monad.xyz'],
+                 blockExplorerUrls: ['https://testnet.monadexplorer.com'],
+               }],
+             });
+            console.log("✅ Monad Testnet added to MetaMask");
+          } catch (addError) {
+            console.error("❌ Failed to add Monad Testnet:", addError);
+            throw addError;
+          }
+        }
+      }
+      
+      const account = getAccount(config);
+      if (account.address) {
+        console.log("👛 Wallet address:", account.address);
+        // Hide connect wallet button and show start game button
+        connectWalletBtn.style.display = "none";
+        startGameBtn.style.display = "block";
+        startGameBtn.innerText = `🎮 Start Game`;
+      }
     } catch (err) {
-      console.error("❌ Підключення MetaMask скасовано або помилка:", err);
+      console.error("❌ Wallet connection error:", err);
+      console.error("Error details:", err.message);
+      alert("Wallet connection failed. Please try again.");
     }
+  });
+
+  startGameBtn.addEventListener("click", () => {
+    gameStarted = true;
+    startGameBtn.style.display = "none";
+    document.getElementById("gameLogo").style.display = "none";
+    draw();
   });
 
   const GAME_WIDTH = 800;
@@ -274,28 +345,13 @@ let speed = baseSpeed * levelBonus;
     animationId = requestAnimationFrame(draw);
   }
 
-  const startBtn = document.getElementById("restartBtn");
-  const startGameBtn = document.getElementById("startGameBtn");
+  const restartBtn = document.getElementById("restartBtn");
 
-  startGameBtn.addEventListener("click", () => {
-    startGameBtn.style.display = "none";
-    document.getElementById("instructions").style.display = "none";
-    gameStarted = true;
-    draw();
-  });
-
-  startBtn.addEventListener("click", () => {
+  restartBtn.addEventListener("click", () => {
     score = 0; level = 1; lives = 3; horseCollected = 0;
     sheepList = []; explosionEffects = []; goodExplosionEffects = [];
     paused = false;
-    startBtn.style.display = "none";
-    gameStarted = true;
-    document.getElementById("instructions").style.display = "none";
-    draw();
-  });
-
-  document.getElementById("instructions").addEventListener("click", () => {
-    document.getElementById("instructions").style.display = "none";
+    restartBtn.style.display = "none";
     gameStarted = true;
     draw();
   });
@@ -311,76 +367,4 @@ let speed = baseSpeed * levelBonus;
   });
 });
 
-// === Monad Network Switch ===
-async function switchToMonadNetwork() {
-  try {
-    await window.ethereum.request({
-      method: "wallet_addEthereumChain",
-      params: [{
-        chainId: "0x279f", // 10143 у hex
-        chainName: "Monad Testnet",
-        nativeCurrency: {
-          name: "Monad",
-          symbol: "MON",
-          decimals: 18,
-        },
-        rpcUrls: ["https://monad-testnet.drpc.org"],
-        blockExplorerUrls: ["https://testnet.monadexplorer.com"]
-      }]
-    });
-  } catch (error) {
-    console.error("⛔ Не вдалося додати Monad Testnet до MetaMask:", error);
-  }
-}
 
-// === Web3 / Metamask ===
-
-let currentAccount = null;
-
-async function connectWallet() {
-  if (window.ethereum) {
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      currentAccount = accounts[0];
-      updateWalletUI();
-    } catch (error) {
-      console.error("User rejected wallet connection", error);
-    }
-  } else {
-    alert("Please install MetaMask!");
-  }
-}
-
-async function checkWalletConnection() {
-  if (window.ethereum) {
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_accounts" });
-      if (accounts.length > 0) {
-        currentAccount = accounts[0];
-      }
-      updateWalletUI();
-    } catch (error) {
-      console.error("Error checking wallet connection", error);
-    }
-  }
-}
-
-function updateWalletUI() {
-  const walletBtn = document.getElementById("walletButton");
-  if (currentAccount) {
-    walletBtn.textContent = "👛 " + currentAccount.slice(0, 6) + "..." + currentAccount.slice(-4);
-  } else {
-    walletBtn.textContent = "Connect Wallet";
-  }
-}
-
-// window.addEventListener("DOMContentLoaded", () => {
-//   const walletBtn = document.getElementById("walletButton");
-//   if (walletBtn) {
-//     walletBtn.addEventListener("click", connectWallet);
-//   }
-//   checkWalletConnection();
-// });
-
-
-// Wallet connection проблема вирішена
